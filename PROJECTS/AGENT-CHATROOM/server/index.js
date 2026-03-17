@@ -219,6 +219,10 @@ function handleMessage(ws, message) {
             handleListUsers(ws, targetRoom);
             break;
         
+        case 'load_history':
+            handleLoadHistory(ws, targetRoom, message.limit || 50);
+            break
+        
         default:
             ws.send(JSON.stringify({
                 type: 'error',
@@ -368,3 +372,4 @@ process.on('SIGTERM', () => {
         process.exit(0);
     });
 });
+
