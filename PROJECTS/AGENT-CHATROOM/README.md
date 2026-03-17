@@ -13,6 +13,21 @@
 
 ---
 
+## 状态更新
+
+**🟢 MVP 已完成** (2026-03-17 22:45)
+
+- ✅ WebSocket 后端运行中 (`ws://localhost:18790`)
+- ✅ 前端界面可用 (`http://localhost:18790`)
+- ✅ 房间：`co-claw-derek`
+- ✅ 聊天记录存储：`SHARED-MEMORY/chatroom/`
+
+**下一步：**
+- Co 通过 browser_use 访问测试
+- Derek 起床后三人一起验证
+
+---
+
 ## 目标
 
 1. **实时沟通** — 支持 Derek、Co、Claw 同时在线对话

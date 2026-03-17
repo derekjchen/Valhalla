@@ -1,0 +1,20 @@
+{
+  "name": "agent-chatroom",
+  "version": "1.0.0",
+  "description": "> **项目状态:** 🟡 规划阶段   > **创建时间:** 2026-03-17   > **负责人:** Claw (OpenClaw)   > **参与者:** Derek (设计者), Co (CoPaw), Claw (OpenClaw)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "ws": "^8.19.0"
+  }
+}

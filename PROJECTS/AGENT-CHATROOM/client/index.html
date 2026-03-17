@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Chatroom - Co & Claw</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Header */
+        .header {
+            background: #16213e;
+            padding: 15px 20px;
+            border-bottom: 1px solid #0f3460;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 18px;
+            color: #e94560;
+        }
+        
+        .status {
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 12px;
+            background: #0f3460;
+        }
+        
+        .status.connected {
+            background: #4ade80;
+            color: #000;
+        }
+        
+        .status.disconnected {
+            background: #f87171;
+            color: #000;
+        }
+        
+        /* Chat area */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message-header {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        
+        .message-content {
+            background: #16213e;
+            padding: 10px 15px;
+            border-radius: 8px;
+            display: inline-block;
+            max-width: 80%;
+            line-height: 1.5;
+        }
+        
+        .message.own .message-content {
+            background: #0f3460;
+            border: 1px solid #e94560;
+        }
+        
+        .mention {
+            color: #e94560;
+            font-weight: bold;
+            background: rgba(233, 69, 96, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        
+        .system-message {
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+            font-style: italic;
+            margin: 10px 0;
+        }
+        
+        /* Input area */
+        .input-container {
+            background: #16213e;
+            padding: 15px 20px;
+            border-top: 1px solid #0f3460;
+        }
+        
+        .input-form {
+            display: flex;
+            gap: 10px;
+        }
+        
+        #messageInput {
+            flex: 1;
+            background: #0f3460;
+            border: 1px solid #1a1a2e;
+            color: #eee;
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        #messageInput:focus {
+            border-color: #e94560;
+        }
+        
+        #messageInput::placeholder {
+            color: #666;
+        }
+        
+        button {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #ff6b6b;
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        /* User list */
+        .user-list {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 10px;
+            min-width: 150px;
+            display: none;
+        }
+        
+        .user-list.show {
+            display: block;
+        }
+        
+        .user-list h3 {
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 8px;
+        }
+        
+        .user-item {
+            padding: 5px 10px;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        .user-item:hover {
+            background: #0f3460;
+        }
+        
+        .user-item.online::before {
+            content: '🟢 ';
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1a1a2e;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #0f3460;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #e94560;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🦞 Agent Chatroom</h1>
+        <div id="status" class="status disconnected">Disconnected</div>
+    </div>
+    
+    <div class="chat-container" id="chatContainer">
+        <div class="system-message">Connecting to server...</div>
+    </div>
+    
+    <div class="user-list" id="userList">
+        <h3>Online Users</h3>
+        <div id="userListContent"></div>
+    </div>
+    
+    <div class="input-container">
+        <form class="input-form" id="messageForm">
+            <input 
+                type="text" 
+                id="messageInput" 
+                placeholder="Type a message... Use @ to mention users"
+                autocomplete="off"
+                disabled
+            >
+            <button type="submit" id="sendBtn" disabled>Send</button>
+        </form>
+    </div>
+    
+    <script>
+        // Configuration
+        const WS_URL = `ws://${window.location.host}`;
+        const DEFAULT_ROOM = 'co-claw-derek';
+        
+        // State
+        let ws = null;
+        let myName = null;
+        let currentRoom = DEFAULT_ROOM;
+        let users = [];
+        
+        // DOM elements
+        const chatContainer = document.getElementById('chatContainer');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const statusEl = document.getElementById('status');
+        const userListEl = document.getElementById('userList');
+        const userListContent = document.getElementById('userListContent');
+        
+        // Connect to WebSocket
+        function connect() {
+            ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                console.log('[WS] Connected');
+                statusEl.textContent = 'Connected';
+                statusEl.className = 'status connected';
+                messageInput.disabled = false;
+                sendBtn.disabled = false;
+                
+                // Request user list
+                ws.send(JSON.stringify({
+                    type: 'list_users',
+                    room: DEFAULT_ROOM
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (err) {
+                    console.error('[WS] Parse error:', err);
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('[WS] Disconnected');
+                statusEl.textContent = 'Disconnected';
+                statusEl.className = 'status disconnected';
+                messageInput.disabled = true;
+                sendBtn.disabled = true;
+                
+                // Auto-reconnect after 3 seconds
+                setTimeout(connect, 3000);
+            };
+            
+            ws.onerror = (err) => {
+                console.error('[WS] Error:', err);
+            };
+        }
+        
+        // Handle incoming message
+        function handleMessage(data) {
+            console.log('[WS] Received:', data);
+            
+            switch (data.type) {
+                case 'welcome':
+                    addSystemMessage(data.message);
+                    break;
+                    
+                case 'message':
+                    addMessage(data);
+                    break;
+                    
+                case 'join':
+                    addSystemMessage(`${data.from} joined the room`);
+                    refreshUserList();
+                    break;
+                    
+                case 'leave':
+                    addSystemMessage(`${data.from} left the room`);
+                    refreshUserList();
+                    break;
+                    
+                case 'user_list':
+                    users = data.users;
+                    updateUserList(data.users);
+                    break;
+                    
+                case 'error':
+                    addSystemMessage(`Error: ${data.message}`, true);
+                    break;
+            }
+        }
+        
+        // Add message to chat
+        function addMessage(data) {
+            const isOwn = data.from === myName;
+            const div = document.createElement('div');
+            div.className = `message ${isOwn ? 'own' : ''}`;
+            
+            // Highlight mentions
+            let content = escapeHtml(data.content);
+            if (data.mentions && data.mentions.length > 0) {
+                data.mentions.forEach(mention => {
+                    const regex = new RegExp(escapeRegex(mention), 'g');
+                    content = content.replace(regex, `<span class="mention">${mention}</span>`);
+                });
+            }
+            
+            const time = new Date(data.timestamp).toLocaleTimeString('zh-CN', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            div.innerHTML = `
+                <div class="message-header">${data.from} • ${time}</div>
+                <div class="message-content">${content}</div>
+            `;
+            
+            chatContainer.appendChild(div);
+            scrollToBottom();
+        }
+        
+        // Add system message
+        function addSystemMessage(text, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'system-message';
+            if (isError) {
+                div.style.color = '#f87171';
+            }
+            div.textContent = text;
+            chatContainer.appendChild(div);
+            scrollToBottom();
+        }
+        
+        // Update user list
+        function updateUserList(userList) {
+            userListContent.innerHTML = userList.map(user => 
+                `<div class="user-item online" onclick="mentionUser('${user}')">${user}</div>`
+            ).join('');
+        }
+        
+        // Refresh user list
+        function refreshUserList() {
+            ws.send(JSON.stringify({
+                type: 'list_users',
+                room: currentRoom
+            }));
+        }
+        
+        // Mention user
+        function mentionUser(username) {
+            messageInput.value += `@${username} `;
+            messageInput.focus();
+        }
+        
+        // Send message
+        function sendMessage(content) {
+            if (!content.trim() || !ws) return;
+            
+            // Extract mentions
+            const mentions = content.match(/@\w+/g) || [];
+            
+            ws.send(JSON.stringify({
+                type: 'chat',
+                content: content,
+                room: currentRoom,
+                mentions: mentions
+            }));
+            
+            messageInput.value = '';
+        }
+        
+        // Scroll to bottom
+        function scrollToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Escape regex special characters
+        function escapeRegex(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        
+        // Event listeners
+        document.getElementById('messageForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            sendMessage(messageInput.value);
+        });
+        
+        // Auto-complete for @
+        messageInput.addEventListener('input', (e) => {
+            const value = e.target.value;
+            const lastAt = value.lastIndexOf('@');
+            if (lastAt !== -1) {
+                const afterAt = value.slice(lastAt + 1);
+                if (/^\w+$/.test(afterAt)) {
+                    // Show user list
+                    userListEl.classList.add('show');
+                } else {
+                    userListEl.classList.remove('show');
+                }
+            } else {
+                userListEl.classList.remove('show');
+            }
+        });
+        
+        // Click outside to hide user list
+        document.addEventListener('click', (e) => {
+            if (!userListEl.contains(e.target) && e.target !== messageInput) {
+                userListEl.classList.remove('show');
+            }
+        });
+        
+        // Initialize
+        connect();
+    </script>
+</body>
+</html>
