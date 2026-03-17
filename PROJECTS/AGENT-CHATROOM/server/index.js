@@ -349,6 +349,48 @@ function handleListUsers(ws, room) {
     }));
 }
 
+// Handle load history
+function handleLoadHistory(ws, room, limit = 50) {
+    try {
+        const today = getToday();
+        const filename = path.join(STORAGE_DIR, `${today}.jsonl`);
+        
+        if (!fs.existsSync(filename)) {
+            ws.send(JSON.stringify({
+                type: 'history',
+                room: room,
+                messages: [],
+                timestamp: formatTimestamp()
+            }));
+            return;
+        }
+        
+        const content = fs.readFileSync(filename, 'utf-8');
+        const lines = content.trim().split('\n').filter(line => line.trim());
+        const messages = lines.slice(-limit).map(line => {
+            try { return JSON.parse(line); }
+            catch { return null; }
+        }).filter(msg => msg !== null);
+        
+        ws.send(JSON.stringify({
+            type: 'history',
+            room: room,
+            messages: messages,
+            count: messages.length,
+            timestamp: formatTimestamp()
+        }));
+        
+        console.log(`[WS] Sent ${messages.length} history messages to ${clients.get(ws)?.name || 'unknown'}`);
+    } catch (err) {
+        console.error('[WS] Error loading history:', err);
+        ws.send(JSON.stringify({
+            type: 'error',
+            message: 'Failed to load history'
+        }));
+    }
+}
+
+
 // Start server
 server.listen(PORT, '0.0.0.0', () => {
     console.log('╔════════════════════════════════════════════════════════╗');
@@ -372,4 +414,5 @@ process.on('SIGTERM', () => {
         process.exit(0);
     });
 });
+
 

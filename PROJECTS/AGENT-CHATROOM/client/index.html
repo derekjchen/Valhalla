@@ -426,6 +426,14 @@
                 case 'name_set':
                     myName = data.name;
                     addSystemMessage(`You are now known as ${data.name}`);
+                    // Request history after setting name
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'load_history',
+                            room: 'co-claw-derek',
+                            limit: 50
+                        }));
+                    }
                     break;
                     
                 case 'message':
@@ -445,6 +453,18 @@
                 case 'user_list':
                     users = data.users;
                     updateUserList(data.users);
+                    break;
+                    
+                case 'history':
+                    // Load history messages
+                    if (data.messages && data.messages.length > 0) {
+                        addSystemMessage(`Loaded ${data.messages.length} previous messages`);
+                        data.messages.forEach(msg => {
+                            if (msg.type === 'message') {
+                                addMessage(msg);
+                            }
+                        });
+                    }
                     break;
                     
                 case 'error':
@@ -592,3 +612,4 @@
     </script>
 </body>
 </html>
+
