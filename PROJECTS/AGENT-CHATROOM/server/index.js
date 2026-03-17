@@ -17,7 +17,7 @@ const path = require('path');
 // Configuration
 const PORT = process.env.CHATROOM_PORT || 18790;
 const DEFAULT_ROOM = 'co-claw-derek';
-const STORAGE_DIR = path.join(__dirname, '..', '..', 'SHARED-MEMORY', 'chatroom');
+const STORAGE_DIR = path.join(__dirname, '..', '..', '..', 'SHARED-MEMORY', 'chatroom');
 
 // Ensure storage directory exists
 if (!fs.existsSync(STORAGE_DIR)) {
@@ -78,9 +78,14 @@ function formatTimestamp() {
 
 // Storage: append message to JSONL file
 function storeMessage(message) {
-    const filename = path.join(STORAGE_DIR, `${getToday()}.jsonl`);
-    const line = JSON.stringify(message) + '\n';
-    fs.appendFileSync(filename, line);
+    try {
+        const filename = path.join(STORAGE_DIR, `${getToday()}.jsonl`);
+        const line = JSON.stringify(message) + '\n';
+        fs.appendFileSync(filename, line);
+        console.log(`[STORE] Message saved to ${filename}`);
+    } catch (err) {
+        console.error('[STORE] Error saving message:', err);
+    }
 }
 
 // Broadcast message to room
@@ -178,8 +183,14 @@ function handleMessage(ws, message) {
     const clientInfo = clients.get(ws);
     if (!clientInfo) return;
     
-    const { type, content, room, mentions } = message;
+    const { type, content, room, mentions, name } = message;
     const targetRoom = room || clientInfo.room;
+    
+    // Handle set_name before room validation
+    if (type === 'set_name') {
+        handleSetName(ws, clientInfo, name);
+        return;
+    }
     
     // Validate room
     if (!rooms.has(targetRoom)) {
@@ -216,9 +227,30 @@ function handleMessage(ws, message) {
     }
 }
 
+// Handle set name
+function handleSetName(ws, clientInfo, name) {
+    if (!name || name.trim() === '') return;
+    
+    const sanitizedName = name.trim().substring(0, 20);
+    const oldName = clientInfo.name;
+    clientInfo.name = sanitizedName;
+    
+    console.log(`[WS] ${oldName} is now known as ${sanitizedName}`);
+    
+    // Send confirmation
+    ws.send(JSON.stringify({
+        type: 'name_set',
+        name: sanitizedName,
+        timestamp: formatTimestamp()
+    }));
+}
+
 // Handle chat message
 function handleChat(ws, clientInfo, room, content, mentions = []) {
-    if (!content || content.trim() === '') return;
+    if (!content || content.trim() === '') {
+        console.log(`[CHAT] Empty message from ${clientInfo.name}, ignoring`);
+        return;
+    }
     
     const message = {
         type: 'message',
@@ -233,13 +265,13 @@ function handleChat(ws, clientInfo, room, content, mentions = []) {
         }
     };
     
+    console.log(`[CHAT] ${clientInfo.name} @ ${room}: ${content}`);
+    
     // Store message
     storeMessage(message);
     
     // Broadcast to room
     broadcastToRoom(room, message);
-    
-    console.log(`[CHAT] ${clientInfo.name} @ ${room}: ${content}`);
 }
 
 // Handle join room

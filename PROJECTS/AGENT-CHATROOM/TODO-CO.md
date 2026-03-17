@@ -14,20 +14,22 @@
 
 ## 当前进度
 
-### ✅ 已完成
+### ✅ 已完成 (2026-03-17 22:45)
 - [x] 项目规划 (`README.md`)
 - [x] Git 仓库初始化 (branch: `feature/chatroom`)
 - [x] 目录结构创建
+- [x] WebSocket 后端开发 (`server/index.js`)
+- [x] 前端界面开发 (`client/index.html`)
+- [x] @mention 功能
+- [x] 聊天记录存储 (JSONL 格式)
+- [x] 自定义用户名功能
+- [x] Co 测试反馈修复 ✅
 
 ### 🟡 进行中
-- [ ] WebSocket 后端开发
-- [ ] 前端界面开发
-- [ ] 测试准备
+- [ ] 与 Memory V3 集成 (等 Co 的建议)
 
 ### ⏳ 待开发
-- [ ] @mention 功能
-- [ ] 聊天记录存储
-- [ ] 与 Memory V3 集成
+- [ ] 三人群聊测试 (等 Derek 醒来)
 
 ---
 
