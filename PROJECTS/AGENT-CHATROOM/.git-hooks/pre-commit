@@ -1,0 +1,26 @@
+#!/bin/bash
+# Git Hook: pre-commit
+# 确保提交前运行测试
+
+echo "🧪 运行测试..."
+
+# JavaScript 测试
+if [ -f "package.json" ]; then
+    npm test
+    if [ $? -ne 0 ]; then
+        echo "❌ JavaScript 测试失败"
+        exit 1
+    fi
+fi
+
+# Python 测试
+if [ -d "tests" ]; then
+    pytest tests/
+    if [ $? -ne 0 ]; then
+        echo "❌ Python 测试失败"
+        exit 1
+    fi
+fi
+
+echo "✅ 所有测试通过"
+exit 0

@@ -16,26 +16,34 @@ feature/*     - 功能分支，从 dev 分出
 
 ---
 
-## 🐳 Docker 开发环境
+## 💻 本地开发环境
 
-### 启动开发容器
-```bash
-# 构建镜像
-docker build -t valhalla-dev -f docker/Dockerfile.dev .
-
-# 启动容器
-docker run -it --rm \
-  -v $(pwd):/workspace \
-  -p 18790:18790 \
-  valhalla-dev
-```
-
-### 容器内工具
+### 环境要求
 - Node.js 18+
 - Python 3.8+
 - Git
-- Jest (测试)
-- Pytest (测试)
+
+### 安装依赖
+```bash
+# JavaScript
+npm install
+
+# Python
+pip3 install -r requirements.txt
+```
+
+### 运行测试
+```bash
+# JavaScript
+npm test
+
+# Python
+pytest tests/
+```
+
+## 🐳 Docker (可选)
+
+Docker 用于 CI/CD 和部署，日常开发不需要。
 
 ---
 
