@@ -88,13 +88,15 @@ def check_server_status():
     """检查服务器状态"""
     try:
         import subprocess
-        result = subprocess.run(
+        result = subprocess.Popen(
             "pgrep -f 'node server/index.js' > /dev/null 2>&1 && echo 'running' || echo 'stopped'",
             shell=True,
-            capture_output=True,
-            text=True
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
         )
-        if 'running' in result.stdout:
+        stdout, stderr = result.communicate()
+        if 'running' in stdout:
             return "✅ 服务器：正常运行"
         return "⚠️ 服务器：未运行"
     except:
