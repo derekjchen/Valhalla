@@ -41,9 +41,33 @@ npm test
 pytest tests/
 ```
 
-## 🐳 Docker (可选)
+## 🐳 Docker 开发环境
 
-Docker 用于 CI/CD 和部署，日常开发不需要。
+### 构建镜像
+```bash
+cd docker
+docker build -t valhalla-dev -f Dockerfile.dev ..
+```
+
+### 运行容器
+```bash
+# 交互式开发
+docker run -it --rm \
+  -v $(pwd):/workspace \
+  -p 18790:18790 \
+  valhalla-dev
+
+# 运行测试
+docker run --rm -v $(pwd):/workspace valhalla-dev npm test
+```
+
+### 已安装工具
+- Node.js v22.22.0
+- npm 10.9.4
+- Python 3.11.2
+- Git 2.39.5
+- Jest (测试)
+- Pytest (测试)
 
 ---
 
