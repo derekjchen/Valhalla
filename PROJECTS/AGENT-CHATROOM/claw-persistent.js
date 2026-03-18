@@ -157,6 +157,8 @@ class ClawClient {
             try {
                 await this.connect();
             } catch (err) {
+                // 指数退避，最多 30 秒
+                this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, 30000);
                 this.scheduleReconnect();
             }
         }, this.reconnectDelay);

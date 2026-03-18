@@ -348,6 +348,10 @@
         const WS_URL = `ws://${window.location.host}`;
         const DEFAULT_ROOM = "co-claw-derek";
         
+        // Agent Identity
+        let agentIdentity = null;
+        let agentRegistered = false;
+        
         // State
         let ws = null;
         let myName = null;
@@ -368,6 +372,35 @@
         const nameInput = document.getElementById("nameInput");
         const modalStatus = document.getElementById("modalStatus");
         const mentionDropdown = document.getElementById("mentionDropdown");
+        
+        // Initialize Agent Identity
+        async function initAgentIdentity() {
+            try {
+                agentIdentity = new AgentIdentityBrowser();
+                let identity = await agentIdentity.load();
+                
+                if (!identity) {
+                    console.log("[AgentIdentity] Generating new identity...");
+                    identity = await agentIdentity.generate("browser-agent");
+                    console.log("[AgentIdentity] Generated:", identity.agentId);
+                } else {
+                    console.log("[AgentIdentity] Loaded:", identity.agentId);
+                }
+                
+                // 注册到服务器
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    console.log("[AgentIdentity] Registering with server...");
+                    ws.send(JSON.stringify({
+                        type: "register_agent",
+                        name: identity.name,
+                        agentId: identity.agentId,
+                        publicKey: identity.publicKey
+                    }));
+                }
+            } catch (err) {
+                console.error("[AgentIdentity] Init failed:", err);
+            }
+        }
         
         // Name form submission
         nameForm.addEventListener("submit", (e) => {
@@ -420,6 +453,9 @@
                 console.log("[WS] Connected");
                 statusEl.textContent = "Connected";
                 statusEl.className = "status connected";
+                
+                // 初始化 Agent Identity
+                initAgentIdentity();
                 
                 // 启用 Join 按钮
                 const joinBtn = document.getElementById("joinBtn");
@@ -495,6 +531,12 @@
                     addSystemMessage(data.message);
                     break;
                     
+                case "agent_registered":
+                    console.log("[AgentIdentity] Registered:", data.agentId);
+                    agentRegistered = true;
+                    addSystemMessage("🔐 Agent identity registered: " + data.agentId.substring(0, 20) + "...");
+                    break;
+                    
                 case "name_set":
                     console.log("[Name] Received name_set:", data.name);
                     myName = data.name;
@@ -511,6 +553,12 @@
                     messageInput.focus();
                     
                     addSystemMessage("✓ You are now known as " + data.name);
+                    
+                    // 标记 Agent 已注册（如果已加载身份）
+                    if (agentIdentity && agentIdentity.agentId) {
+                        agentRegistered = true;
+                        console.log("[AgentIdentity] Ready to send signed messages:", agentIdentity.agentId);
+                    }
                     
                     ws.send(JSON.stringify({
                         type: "list_users",
@@ -609,7 +657,7 @@
         }
         
         // Send message
-        function sendMessage(content) {
+        async function sendMessage(content) {
             if (!content.trim()) return;
             if (!myName) {
                 pendingMessages.push(content);
@@ -619,12 +667,36 @@
             
             const mentions = content.match(/@\w+/g) || [];
             
-            ws.send(JSON.stringify({
-                type: "chat",
-                content: content,
-                room: currentRoom,
-                mentions: mentions
-            }));
+            // 使用 Agent Identity 签名消息
+            if (agentIdentity && agentRegistered) {
+                try {
+                    const signature = await agentIdentity.sign(content);
+                    ws.send(JSON.stringify({
+                        type: "signed_message",
+                        agentId: agentIdentity.agentId,
+                        content: content,
+                        signature: signature
+                    }));
+                    console.log("[AgentIdentity] Sent signed message:", agentIdentity.agentId);
+                } catch (err) {
+                    console.error("[AgentIdentity] Sign failed:", err);
+                    // Fallback to normal message
+                    ws.send(JSON.stringify({
+                        type: "chat",
+                        content: content,
+                        room: currentRoom,
+                        mentions: mentions
+                    }));
+                }
+            } else {
+                // Fallback to normal message
+                ws.send(JSON.stringify({
+                    type: "chat",
+                    content: content,
+                    room: currentRoom,
+                    mentions: mentions
+                }));
+            }
             
             messageInput.value = "";
             hideMentionDropdown();
