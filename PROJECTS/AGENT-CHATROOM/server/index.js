@@ -142,6 +142,12 @@ wss.on('connection', (ws) => {
     };
     clients.set(ws, clientInfo);
     
+    // 心跳机制 - 检测死连接
+    ws.isAlive = true;
+    ws.on('pong', () => {
+        ws.isAlive = true;
+    });
+    
     // Join default room
     if (!rooms.has(DEFAULT_ROOM)) {
         rooms.set(DEFAULT_ROOM, new Set());
@@ -478,6 +484,23 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`║  Room:      ${DEFAULT_ROOM}                             `);
     console.log(`║  Storage:   ${STORAGE_DIR}                              `);
     console.log('╚════════════════════════════════════════════════════════╝');
+});
+
+// 心跳检查 - 每 30 秒清理死连接
+const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) {
+            console.log('[WS] Heartbeat timeout, closing connection');
+            return ws.terminate();
+        }
+        
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30000);
+
+wss.on('close', () => {
+    clearInterval(heartbeatInterval);
 });
 
 // Handle Agent Registration

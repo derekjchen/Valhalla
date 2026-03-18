@@ -447,7 +447,15 @@
         
         // Connect to WebSocket
         function connect() {
+            console.log("[WS] Connecting to:", WS_URL);
             ws = new WebSocket(WS_URL);
+            
+            ws.onerror = (err) => {
+                console.error("[WS] Connection error:", err);
+                if (modalStatus) {
+                    modalStatus.textContent = "❌ 连接失败，请检查网络";
+                }
+            };
             
             ws.onopen = () => {
                 console.log("[WS] Connected");
