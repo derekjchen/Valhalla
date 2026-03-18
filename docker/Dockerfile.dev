@@ -1,0 +1,22 @@
+FROM node:18-alpine
+
+# 安装 Python 和依赖
+RUN apk add --no-cache python3 py3-pip git
+
+# 设置工作目录
+WORKDIR /workspace
+
+# 安装依赖
+COPY package*.json ./
+RUN npm install
+
+# 安装 Python 依赖
+COPY requirements.txt ./
+RUN pip3 install -r requirements.txt
+
+# 安装测试工具
+RUN npm install -g jest
+RUN pip3 install pytest pytest-cov
+
+# 默认命令
+CMD ["sh"]

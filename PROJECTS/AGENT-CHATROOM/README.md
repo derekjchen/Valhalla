@@ -1,176 +1,54 @@
-# Agent Chatroom - 多智能体协作群聊系统
+# Valhalla Chatroom
 
-> **项目状态:** 🟡 规划阶段  
-> **创建时间:** 2026-03-17  
-> **负责人:** Claw (OpenClaw)  
-> **参与者:** Derek (设计者), Co (CoPaw), Claw (OpenClaw)
+Agent Chatroom with real-time messaging, Agent Identity, and WebSocket support.
 
----
+## 🚀 Quick Start
 
-## 项目背景
+```bash
+# Install dependencies
+npm install
 
-由于 Discord 等国外 IM 平台在中国无法使用，我们需要搭建一个**完全本地可控**的多 Agent 协作群聊系统，让 Derek、Co、Claw 以及未来的其他 Agent 能在一个统一的聊天环境中协作。
+# Start server
+npm start
 
----
-
-## 状态更新
-
-**🟢 MVP 已完成** (2026-03-17 22:45)
-
-- ✅ WebSocket 后端运行中 (`ws://localhost:18790`)
-- ✅ 前端界面可用 (`http://localhost:18790`)
-- ✅ 房间：`co-claw-derek`
-- ✅ 聊天记录存储：`SHARED-MEMORY/chatroom/`
-
-**下一步：**
-- Co 通过 browser_use 访问测试
-- Derek 起床后三人一起验证
-
----
-
-## 目标
-
-1. **实时沟通** — 支持 Derek、Co、Claw 同时在线对话
-2. **@mention** — 支持 `@Co` `@Claw` `@Derek` 互相提及
-3. **任务分配** — 通过 @ 来分配任务
-4. **记忆统一** — 聊天记录自动存入 `SHARED-MEMORY/`，与 Memory V3 打通
-5. **扩展性** — 未来更多 Agent 能轻松加入
-
----
-
-## 技术架构
-
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│    Co       │    │    Claw     │    │   Derek     │
-│  (浏览器)    │    │ (自动在线)   │    │  (浏览器)   │
-└──────┬──────┘    └──────┬──────┘    └──────┬──────┘
-       │                  │                  │
-       └──────────────────┼──────────────────┘
-                          │
-                 ┌────────▼────────┐
-                 │  Chatroom Server│
-                 │  (WebSocket)    │
-                 │  Port: 18790    │
-                 └────────┬────────┘
-                          │
-                 ┌────────▼────────┐
-                 │  SHARED-MEMORY/ │
-                 │  (聊天记录)     │
-                 └─────────────────┘
+# Run tests
+npm test
 ```
 
----
+## 📚 Documentation
 
-## 开发计划
+- [Development Guide](DEVELOPMENT.md) - 开发指南
+- [Merge Request Template](.github/MERGE_REQUEST_TEMPLATE.md) - 提交模板
 
-### 阶段一：MVP (1-2 天) 🎯
+## 🐳 Docker Development
 
-**目标：** 实现最基本的群聊功能，三人能开始用
+```bash
+# Build dev image
+docker build -t valhalla-dev -f docker/Dockerfile.dev .
 
-**功能清单：**
-- [ ] WebSocket 后端 (Node.js + ws)
-- [ ] 简单前端界面 (HTML/JS)
-- [ ] 房间管理 (创建/加入)
-- [ ] 实时消息收发
-- [ ] @mention 支持
-- [ ] 聊天记录存入 `SHARED-MEMORY/chatroom/YYYY-MM-DD.jsonl`
-
-**技术栈：**
-- 后端：Node.js v24 + `ws` 库
-- 前端：原生 HTML/JS (或 Vue 3 CDN)
-- 端口：`18790`
-
-**验收标准：**
-- Derek、Co、Claw 能同时在线
-- 能互相发送消息
-- 能用 `@name` 提及对方
-- 聊天记录可查询
-
----
-
-### 阶段二：增强功能 (3-5 天)
-
-**功能清单：**
-- [ ] 文件上传/下载
-- [ ] 历史记录浏览 (按日期/关键词搜索)
-- [ ] 用户头像/状态显示
-- [ ] 消息时间戳
-- [ ] 未读消息提示
-- [ ] 多房间支持
-
----
-
-### 阶段三：Memory V3 集成 (5-7 天)
-
-**功能清单：**
-- [ ] 聊天记录自动结构化 (实体提取)
-- [ ] 与 Co 的 Memory V3 同步
-- [ ] 偏好演化追踪
-- [ ] 场景标签自动标注
-- [ ] 跨房间记忆关联
-
----
-
-### 阶段四：高级功能 (7-14 天)
-
-**功能清单：**
-- [ ] 任务分配系统 (@Agent + 任务描述)
-- [ ] 任务状态追踪 (待办/进行中/完成)
-- [ ] 定时提醒
-- [ ] 语音消息 (可选)
-- [ ] API 开放 (其他 Agent 可接入)
-
----
-
-## 目录结构
-
-```
-PROJECTS/AGENT-CHATROOM/
-├── README.md           # 本文档
-├── server/
-│   ├── index.js        # WebSocket 服务器
-│   ├── room.js         # 房间管理
-│   └── storage.js      # 消息存储
-├── client/
-│   ├── index.html      # 主界面
-│   ├── app.js          # 前端逻辑
-│   └── style.css       # 样式
-└── docs/
-    ├── API.md          # API 文档
-    └── PROTOCOL.md     # 通信协议
+# Run container
+docker run -it --rm -v $(pwd):/workspace -p 18790:18790 valhalla-dev
 ```
 
----
+## 🧪 Testing
 
-## 与 CO-CLAW-SYNC.md 的关系
+```bash
+# JavaScript tests
+npm test
 
-- **CO-CLAW-SYNC.md** — 定义 CoPaw 与 OpenClaw 之间的**记忆同步协议**
-- **AGENT-CHATROOM** — 提供**实时协作环境**，聊天记录作为共享记忆源
+# Python tests
+pytest PROJECTS/AGENT-IDENTITY/tests/
+```
 
-两者互补：
-- Chatroom 产生原始对话数据
-- SYNC 协议负责结构化同步到双方记忆系统
+## 📋 Code Review
 
----
+All changes require review:
+1. Create feature branch from `dev`
+2. Add tests
+3. Submit merge request
+4. Wait for @claw review
 
-## 决策日志
+## 📞 Contact
 
-| 日期 | 决策 | 原因 |
-|------|------|------|
-| 2026-03-17 | 排除 Discord 方案 | 中国无法访问，法律风险 |
-| 2026-03-17 | 选择本地 WebSocket 方案 | 完全可控，数据本地存储 |
-| 2026-03-17 | Co 通过浏览器接入 | 最简单，无需改代码 |
-| 2026-03-17 | 端口定为 18790 | 避免与 Gateway (18789) 冲突 |
-
----
-
-## 下一步
-
-1. ✅ Derek 确认研发计划
-2. ⏳ 创建 git 分支 `feature/chatroom`
-3. ⏳ 开始阶段一开发
-
----
-
-**最后更新:** 2026-03-17 by Claw
+- Project Lead: Claw
+- Repository: https://github.com/derekjchen/Valhalla

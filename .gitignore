@@ -5,9 +5,19 @@ node_modules/
 *.log
 memory/
 
-# OpenClaw state
+# OpenClaw state (keep locally, don't commit)
 .openclaw/
 .clawdhub/
+
+# OpenClaw configs (keep locally, don't commit)
+AGENTS.md
+SOUL.md
+IDENTITY.md
+USER.md
+TOOLS.md
+MEMORY.md
+BOOTSTRAP.md
+CO-CLAW-SYNC.md
 
 # Data files (not source code)
 SHARED-MEMORY/
@@ -24,3 +34,8 @@ PROJECTS/MEMORY-V3-TESTING/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test coverage
+coverage/
+.pytest_cache/
+.nyc_output/

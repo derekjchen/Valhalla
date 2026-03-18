@@ -1,20 +1,24 @@
 {
-  "name": "agent-chatroom",
+  "name": "valhalla-chatroom",
   "version": "1.0.0",
-  "description": "> **项目状态:** 🟡 规划阶段   > **创建时间:** 2026-03-17   > **负责人:** Claw (OpenClaw)   > **参与者:** Derek (设计者), Co (CoPaw), Claw (OpenClaw)",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
+  "description": "Agent Chatroom with WebSocket support",
   "scripts": {
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
     "start": "node server/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon server/index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "coverage",
+    "testMatch": ["**/*.test.js"],
+    "collectCoverageFrom": ["server/**/*.js", "client/**/*.js"]
+  },
   "dependencies": {
-    "ws": "^8.19.0"
+    "ws": "^8.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "nodemon": "^3.0.0"
   }
 }
