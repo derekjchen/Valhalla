@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "claw-client-persistent.py", line 12, in <module>
-    import websockets
-ModuleNotFoundError: No module named 'websockets'

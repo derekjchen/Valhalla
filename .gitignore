@@ -1,0 +1,26 @@
+# Node modules
+node_modules/
+
+# Logs
+*.log
+memory/
+
+# OpenClaw state
+.openclaw/
+.clawdhub/
+
+# Data files (not source code)
+SHARED-MEMORY/
+
+# Unrelated projects
+PROJECTS/MEMORY-V3-TESTING/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
