@@ -12,7 +12,7 @@
         }
         
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #1a1a2e;
             color: #eee;
             height: 100vh;
@@ -20,7 +20,6 @@
             flex-direction: column;
         }
         
-        /* Header */
         .header {
             background: #16213e;
             padding: 15px 20px;
@@ -52,7 +51,6 @@
             color: #000;
         }
         
-        /* Chat area */
         .chat-container {
             flex: 1;
             overflow-y: auto;
@@ -82,6 +80,7 @@
             display: inline-block;
             max-width: 80%;
             line-height: 1.5;
+            word-wrap: break-word;
         }
         
         .message.own .message-content {
@@ -105,11 +104,11 @@
             margin: 10px 0;
         }
         
-        /* Input area */
         .input-container {
             background: #16213e;
             padding: 15px 20px;
             border-top: 1px solid #0f3460;
+            position: relative;
         }
         
         .input-form {
@@ -157,17 +156,54 @@
             cursor: not-allowed;
         }
         
-        /* User list */
-        .user-list {
-            position: fixed;
-            top: 60px;
-            right: 20px;
+        /* @ Mention Autocomplete Dropdown */
+        .mention-dropdown {
+            position: absolute;
+            bottom: 100%;
+            left: 20px;
+            right: 80px;
             background: #16213e;
-            border: 1px solid #0f3460;
+            border: 1px solid #e94560;
             border-radius: 8px;
-            padding: 10px;
-            min-width: 150px;
+            max-height: 200px;
+            overflow-y: auto;
             display: none;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .mention-dropdown.show {
+            display: block;
+        }
+        
+        .mention-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.2s;
+        }
+        
+        .mention-item:hover,
+        .mention-item.selected {
+            background: #0f3460;
+        }
+        
+        .mention-item .online-dot {
+            width: 8px;
+            height: 8px;
+            background: #4ade80;
+            border-radius: 50%;
+        }
+        
+        .mention-item .name {
+            flex: 1;
+        }
+        
+        .mention-item .hint {
+            color: #666;
+            font-size: 11px;
         }
         
         /* Name modal */
@@ -209,6 +245,17 @@
             margin-bottom: 20px;
         }
         
+        .modal .status-text {
+            color: #e94560;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 10px;
+            min-height: 20px;
+            padding: 8px;
+            background: rgba(233, 69, 96, 0.1);
+            border-radius: 4px;
+        }
+        
         .modal input {
             width: 100%;
             background: #0f3460;
@@ -229,31 +276,6 @@
             width: 100%;
             padding: 14px;
             font-size: 16px;
-        }
-        
-        .user-list.show {
-            display: block;
-        }
-        
-        .user-list h3 {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 8px;
-        }
-        
-        .user-item {
-            padding: 5px 10px;
-            font-size: 13px;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-        
-        .user-item:hover {
-            background: #0f3460;
-        }
-        
-        .user-item.online::before {
-            content: '🟢 ';
         }
         
         /* Scrollbar */
@@ -285,16 +307,12 @@
         <div class="system-message">Connecting to server...</div>
     </div>
     
-    <div class="user-list" id="userList">
-        <h3>Online Users</h3>
-        <div id="userListContent"></div>
-    </div>
-    
     <!-- Name setup modal -->
     <div class="modal-overlay" id="nameModal">
         <div class="modal">
             <h2>🦞 Welcome to Agent Chatroom</h2>
             <p>Enter your name to get started:</p>
+            <div id="modalStatus" class="status-text"></div>
             <form id="nameForm">
                 <input 
                     type="text" 
@@ -304,12 +322,15 @@
                     required
                     maxlength="20"
                 >
-                <button type="submit">Join Chat</button>
+                <button type="submit" id="joinBtn" disabled>⏳ Connecting...</button>
             </form>
         </div>
     </div>
     
     <div class="input-container">
+        <!-- @ Mention Dropdown -->
+        <div class="mention-dropdown" id="mentionDropdown"></div>
+        
         <form class="input-form" id="messageForm">
             <input 
                 type="text" 
@@ -325,7 +346,7 @@
     <script>
         // Configuration
         const WS_URL = `ws://${window.location.host}`;
-        const DEFAULT_ROOM = 'co-claw-derek';
+        const DEFAULT_ROOM = "co-claw-derek";
         
         // State
         let ws = null;
@@ -333,46 +354,61 @@
         let currentRoom = DEFAULT_ROOM;
         let users = [];
         let pendingMessages = [];
+        let pendingName = null;
+        let mentionStart = -1;
+        let selectedMentionIndex = -1;
         
         // DOM elements
-        const chatContainer = document.getElementById('chatContainer');
-        const messageInput = document.getElementById('messageInput');
-        const sendBtn = document.getElementById('sendBtn');
-        const statusEl = document.getElementById('status');
-        const userListEl = document.getElementById('userList');
-        const userListContent = document.getElementById('userListContent');
-        const nameModal = document.getElementById('nameModal');
-        const nameForm = document.getElementById('nameForm');
-        const nameInput = document.getElementById('nameInput');
+        const chatContainer = document.getElementById("chatContainer");
+        const messageInput = document.getElementById("messageInput");
+        const sendBtn = document.getElementById("sendBtn");
+        const statusEl = document.getElementById("status");
+        const nameModal = document.getElementById("nameModal");
+        const nameForm = document.getElementById("nameForm");
+        const nameInput = document.getElementById("nameInput");
+        const modalStatus = document.getElementById("modalStatus");
+        const mentionDropdown = document.getElementById("mentionDropdown");
         
         // Name form submission
-        nameForm.addEventListener('submit', (e) => {
+        nameForm.addEventListener("submit", (e) => {
             e.preventDefault();
             const name = nameInput.value.trim();
-            if (name && ws && ws.readyState === WebSocket.OPEN) {
-                // Send name to server
+            // 如果 WebSocket 未连接，保存名字等待连接
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                console.log("[WS] Not connected, will submit when ready");
+                pendingName = name;
+                return;
+            }
+            
+            if (name) {
+                // 显示加载状态
+                const submitBtn = nameForm.querySelector('button[type="submit"]');
+                const originalText = submitBtn.textContent;
+                submitBtn.textContent = "⏳ Joining...";
+                submitBtn.disabled = true;
+                
+                if (modalStatus) {
+                    modalStatus.textContent = "📡 Sending name to server...";
+                }
+                
+                // 发送名字，等待服务器确认
                 ws.send(JSON.stringify({
-                    type: 'set_name',
+                    type: "set_name",
                     name: name
                 }));
-                myName = name;
                 
-                // Hide modal
-                nameModal.classList.add('hidden');
+                console.log("[Name] Sent set_name:", name);
                 
-                // Enable chat
-                messageInput.disabled = false;
-                sendBtn.disabled = false;
+                // 保存按钮引用，用于 name_set 响应时恢复
+                window.pendingSubmitBtn = submitBtn;
+                window.pendingOriginalText = originalText;
                 
-                // Request user list
-                ws.send(JSON.stringify({
-                    type: 'list_users',
-                    room: DEFAULT_ROOM
-                }));
-                
-                // Send any pending messages
-                pendingMessages.forEach(msg => sendMessage(msg));
-                pendingMessages = [];
+                // 至少显示 1 秒状态，让用户看清楚
+                setTimeout(() => {
+                    if (modalStatus && modalStatus.textContent === "📡 Sending name to server...") {
+                        modalStatus.textContent = "⏳ Waiting for server...";
+                    }
+                }, 1000);
             }
         });
         
@@ -381,12 +417,49 @@
             ws = new WebSocket(WS_URL);
             
             ws.onopen = () => {
-                console.log('[WS] Connected');
-                statusEl.textContent = 'Connected';
-                statusEl.className = 'status connected';
+                console.log("[WS] Connected");
+                statusEl.textContent = "Connected";
+                statusEl.className = "status connected";
                 
-                // Focus on name input
-                nameInput.focus();
+                // 启用 Join 按钮
+                const joinBtn = document.getElementById("joinBtn");
+                if (joinBtn) {
+                    joinBtn.disabled = false;
+                    joinBtn.textContent = "Join Chat";
+                }
+                
+                // 更新弹窗状态
+                if (modalStatus) {
+                    modalStatus.textContent = "✓ Connected to server";
+                    setTimeout(() => { modalStatus.textContent = ""; }, 1500);
+                }
+                
+                // 如果有待提交的名字，自动处理
+                if (pendingName) {
+                    console.log("[WS] Processing pending name:", pendingName);
+                    const name = pendingName;
+                    pendingName = null;
+                    ws.send(JSON.stringify({
+                        type: "set_name",
+                        name: name
+                    }));
+                    myName = name;
+                    nameModal.classList.add("hidden");
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+                    messageInput.focus();
+                    ws.send(JSON.stringify({
+                        type: "list_users",
+                        room: DEFAULT_ROOM
+                    }));
+                    ws.send(JSON.stringify({
+                        type: "load_history",
+                        room: "co-claw-derek",
+                        limit: 50
+                    }));
+                } else {
+                    nameInput.focus();
+                }
             };
             
             ws.onmessage = (event) => {
@@ -394,81 +467,99 @@
                     const data = JSON.parse(event.data);
                     handleMessage(data);
                 } catch (err) {
-                    console.error('[WS] Parse error:', err);
+                    console.error("[WS] Parse error:", err);
                 }
             };
             
             ws.onclose = () => {
-                console.log('[WS] Disconnected');
-                statusEl.textContent = 'Disconnected';
-                statusEl.className = 'status disconnected';
+                console.log("[WS] Disconnected");
+                statusEl.textContent = "Disconnected";
+                statusEl.className = "status disconnected";
                 messageInput.disabled = true;
                 sendBtn.disabled = true;
-                
-                // Auto-reconnect after 3 seconds
+                hideMentionDropdown();
                 setTimeout(connect, 3000);
             };
             
             ws.onerror = (err) => {
-                console.error('[WS] Error:', err);
+                console.error("[WS] Error:", err);
             };
         }
         
         // Handle incoming message
         function handleMessage(data) {
-            console.log('[WS] Received:', data);
+            console.log("[WS] Received:", data);
             
             switch (data.type) {
-                case 'welcome':
+                case "welcome":
                     addSystemMessage(data.message);
                     break;
                     
-                case 'name_set':
+                case "name_set":
+                    console.log("[Name] Received name_set:", data.name);
                     myName = data.name;
-                    addSystemMessage(`You are now known as ${data.name}`);
-                    // Request history after setting name
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'load_history',
-                            room: 'co-claw-derek',
-                            limit: 50
-                        }));
+                    
+                    // 显示成功状态
+                    if (modalStatus) {
+                        modalStatus.textContent = "✅ Name confirmed! Joining...";
+                    }
+                    
+                    // 直接隐藏弹窗，进入聊天
+                    nameModal.classList.add("hidden");
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+                    messageInput.focus();
+                    
+                    addSystemMessage("✓ You are now known as " + data.name);
+                    
+                    ws.send(JSON.stringify({
+                        type: "list_users",
+                        room: DEFAULT_ROOM
+                    }));
+                    
+                    ws.send(JSON.stringify({
+                        type: "load_history",
+                        room: "co-claw-derek",
+                        limit: 50
+                    }));
+                    
+                    if (window.pendingSubmitBtn) {
+                        window.pendingSubmitBtn.disabled = false;
+                        window.pendingSubmitBtn = null;
                     }
                     break;
                     
-                case 'message':
+                case "message":
                     addMessage(data);
                     break;
                     
-                case 'join':
-                    addSystemMessage(`${data.from} joined the room`);
+                case "join":
+                    addSystemMessage(data.from + " joined the room");
                     refreshUserList();
                     break;
                     
-                case 'leave':
-                    addSystemMessage(`${data.from} left the room`);
+                case "leave":
+                    addSystemMessage(data.from + " left the room");
                     refreshUserList();
                     break;
                     
-                case 'user_list':
+                case "user_list":
                     users = data.users;
-                    updateUserList(data.users);
                     break;
                     
-                case 'history':
-                    // Load history messages
+                case "history":
                     if (data.messages && data.messages.length > 0) {
-                        addSystemMessage(`Loaded ${data.messages.length} previous messages`);
+                        addSystemMessage("Loaded " + data.messages.length + " previous messages");
                         data.messages.forEach(msg => {
-                            if (msg.type === 'message') {
+                            if (msg.type === "message") {
                                 addMessage(msg);
                             }
                         });
                     }
                     break;
                     
-                case 'error':
-                    addSystemMessage(`Error: ${data.message}`, true);
+                case "error":
+                    addSystemMessage("Error: " + data.message, true);
                     break;
             }
         }
@@ -476,27 +567,24 @@
         // Add message to chat
         function addMessage(data) {
             const isOwn = data.from === myName;
-            const div = document.createElement('div');
-            div.className = `message ${isOwn ? 'own' : ''}`;
+            const div = document.createElement("div");
+            div.className = "message" + (isOwn ? " own" : "");
             
-            // Highlight mentions
             let content = escapeHtml(data.content);
             if (data.mentions && data.mentions.length > 0) {
                 data.mentions.forEach(mention => {
-                    const regex = new RegExp(escapeRegex(mention), 'g');
+                    const regex = new RegExp(escapeRegex(mention), "g");
                     content = content.replace(regex, `<span class="mention">${mention}</span>`);
                 });
             }
             
-            const time = new Date(data.timestamp).toLocaleTimeString('zh-CN', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
+            const time = new Date(data.timestamp).toLocaleTimeString("zh-CN", { 
+                hour: "2-digit", 
+                minute: "2-digit" 
             });
             
-            div.innerHTML = `
-                <div class="message-header">${data.from} • ${time}</div>
-                <div class="message-content">${content}</div>
-            `;
+            div.innerHTML = `<div class="message-header">${data.from} • ${time}</div>` +
+                `<div class="message-content">${content}</div>`;
             
             chatContainer.appendChild(div);
             scrollToBottom();
@@ -504,60 +592,42 @@
         
         // Add system message
         function addSystemMessage(text, isError = false) {
-            const div = document.createElement('div');
-            div.className = 'system-message';
-            if (isError) {
-                div.style.color = '#f87171';
-            }
+            const div = document.createElement("div");
+            div.className = "system-message";
+            if (isError) div.style.color = "#f87171";
             div.textContent = text;
             chatContainer.appendChild(div);
             scrollToBottom();
         }
         
-        // Update user list
-        function updateUserList(userList) {
-            userListContent.innerHTML = userList.map(user => 
-                `<div class="user-item online" onclick="mentionUser('${user}')">${user}</div>`
-            ).join('');
-        }
-        
         // Refresh user list
         function refreshUserList() {
             ws.send(JSON.stringify({
-                type: 'list_users',
+                type: "list_users",
                 room: currentRoom
             }));
-        }
-        
-        // Mention user
-        function mentionUser(username) {
-            messageInput.value += `@${username} `;
-            messageInput.focus();
         }
         
         // Send message
         function sendMessage(content) {
             if (!content.trim()) return;
-            
-            // If name not set yet, queue the message
             if (!myName) {
                 pendingMessages.push(content);
                 return;
             }
-            
             if (!ws) return;
             
-            // Extract mentions
             const mentions = content.match(/@\w+/g) || [];
             
             ws.send(JSON.stringify({
-                type: 'chat',
+                type: "chat",
                 content: content,
                 room: currentRoom,
                 mentions: mentions
             }));
             
-            messageInput.value = '';
+            messageInput.value = "";
+            hideMentionDropdown();
         }
         
         // Scroll to bottom
@@ -567,44 +637,128 @@
         
         // Escape HTML
         function escapeHtml(text) {
-            const div = document.createElement('div');
+            const div = document.createElement("div");
             div.textContent = text;
             return div.innerHTML;
         }
         
-        // Escape regex special characters
+        // Escape regex
         function escapeRegex(string) {
-            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         }
         
-        // Event listeners
-        document.getElementById('messageForm').addEventListener('submit', (e) => {
+        // ============ @ Mention Autocomplete ============
+        
+        function showMentionDropdown(query) {
+            const filtered = users.filter(u => 
+                u.toLowerCase().includes(query.toLowerCase()) && 
+                u !== myName
+            );
+            
+            if (filtered.length === 0) {
+                hideMentionDropdown();
+                return;
+            }
+            
+            selectedMentionIndex = 0;
+            
+            mentionDropdown.innerHTML = filtered.map((user, i) => 
+                `<div class="mention-item${i === 0 ? " selected" : ""}" data-index="${i}">` +
+                    `<span class="online-dot"></span>` +
+                    `<span class="name">${user}</span>` +
+                    `<span class="hint">Tab to select</span>` +
+                `</div>`
+            ).join("");
+            
+            mentionDropdown.classList.add("show");
+            
+            // Add click handlers
+            mentionDropdown.querySelectorAll(".mention-item").forEach((item, i) => {
+                item.addEventListener("click", () => selectMention(filtered[i]));
+            });
+        }
+        
+        function hideMentionDropdown() {
+            mentionDropdown.classList.remove("show");
+            mentionStart = -1;
+            selectedMentionIndex = -1;
+        }
+        
+        function selectMention(username) {
+            const value = messageInput.value;
+            const before = value.substring(0, mentionStart);
+            const after = value.substring(messageInput.selectionStart);
+            messageInput.value = before + "@" + username + " " + after;
+            hideMentionDropdown();
+            messageInput.focus();
+        }
+        
+        function updateSelectedMention() {
+            const items = mentionDropdown.querySelectorAll(".mention-item");
+            items.forEach((item, i) => {
+                item.classList.toggle("selected", i === selectedMentionIndex);
+            });
+        }
+        
+        // Input event for @ mention
+        messageInput.addEventListener("input", (e) => {
+            const value = e.target.value;
+            const cursorPos = messageInput.selectionStart;
+            
+            // Find @ before cursor
+            let atPos = -1;
+            for (let i = cursorPos - 1; i >= 0; i--) {
+                if (value[i] === "@") {
+                    atPos = i;
+                    break;
+                }
+                if (value[i] === " ") break;
+            }
+            
+            if (atPos !== -1 && atPos < cursorPos) {
+                mentionStart = atPos;
+                const query = value.substring(atPos + 1, cursorPos);
+                showMentionDropdown(query);
+            } else {
+                hideMentionDropdown();
+            }
+        });
+        
+        // Keyboard navigation for mention dropdown
+        messageInput.addEventListener("keydown", (e) => {
+            if (!mentionDropdown.classList.contains("show")) return;
+            
+            const items = mentionDropdown.querySelectorAll(".mention-item");
+            const filtered = users.filter(u => u !== myName);
+            
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                selectedMentionIndex = (selectedMentionIndex + 1) % items.length;
+                updateSelectedMention();
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                selectedMentionIndex = (selectedMentionIndex - 1 + items.length) % items.length;
+                updateSelectedMention();
+            } else if (e.key === "Tab" || e.key === "Enter") {
+                if (items[selectedMentionIndex]) {
+                    e.preventDefault();
+                    const filtered = users.filter(u => 
+                        u.toLowerCase().includes(messageInput.value.substring(mentionStart + 1, messageInput.selectionStart).toLowerCase()) && 
+                        u !== myName
+                    );
+                    if (filtered[selectedMentionIndex]) {
+                        selectMention(filtered[selectedMentionIndex]);
+                    }
+                }
+            } else if (e.key === "Escape") {
+                hideMentionDropdown();
+            }
+        });
+        
+        // Form submit
+        document.getElementById("messageForm").addEventListener("submit", (e) => {
             e.preventDefault();
             sendMessage(messageInput.value);
-        });
-        
-        // Auto-complete for @
-        messageInput.addEventListener('input', (e) => {
-            const value = e.target.value;
-            const lastAt = value.lastIndexOf('@');
-            if (lastAt !== -1) {
-                const afterAt = value.slice(lastAt + 1);
-                if (/^\w+$/.test(afterAt)) {
-                    // Show user list
-                    userListEl.classList.add('show');
-                } else {
-                    userListEl.classList.remove('show');
-                }
-            } else {
-                userListEl.classList.remove('show');
-            }
-        });
-        
-        // Click outside to hide user list
-        document.addEventListener('click', (e) => {
-            if (!userListEl.contains(e.target) && e.target !== messageInput) {
-                userListEl.classList.remove('show');
-            }
         });
         
         // Initialize
@@ -612,4 +766,3 @@
     </script>
 </body>
 </html>
-

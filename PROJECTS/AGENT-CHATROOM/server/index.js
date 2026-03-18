@@ -13,11 +13,40 @@ const WebSocket = require('ws');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { AgentRegistry } = require('./agent_identity');
 
 // Configuration
 const PORT = process.env.CHATROOM_PORT || 18790;
 const DEFAULT_ROOM = 'co-claw-derek';
 const STORAGE_DIR = path.join(__dirname, '..', '..', '..', 'SHARED-MEMORY', 'chatroom');
+const REGISTRY_FILE = path.join(__dirname, '..', '..', 'AGENT-IDENTITY', 'keys', 'registry.json');
+
+// Initialize Agent Registry
+const agentRegistry = new AgentRegistry();
+
+// Load registry from file if exists
+if (fs.existsSync(REGISTRY_FILE)) {
+    try {
+        const data = JSON.parse(fs.readFileSync(REGISTRY_FILE, 'utf8'));
+        data.forEach(agent => {
+            agentRegistry.agents.set(agent.agentId, {
+                name: agent.name,
+                publicKey: agent.publicKey,
+                registeredAt: agent.registeredAt
+            });
+        });
+        console.log(`[Registry] Loaded ${agentRegistry.agents.size} agents from file`);
+    } catch (err) {
+        console.error('[Registry] Failed to load registry:', err);
+    }
+}
+
+// Save registry to file
+function saveRegistry() {
+    const data = agentRegistry.listAgents();
+    fs.writeFileSync(REGISTRY_FILE, JSON.stringify(data, null, 2));
+    console.log(`[Registry] Saved ${data.length} agents to file`);
+}
 
 // Ensure storage directory exists
 if (!fs.existsSync(STORAGE_DIR)) {
@@ -26,7 +55,9 @@ if (!fs.existsSync(STORAGE_DIR)) {
 
 // Create HTTP server for static files
 const server = http.createServer((req, res) => {
-    const url = req.url === '/' ? '/index.html' : req.url;
+    // Remove query string and handle root path
+    const urlPath = req.url.split('?')[0];
+    const url = urlPath === '/' ? '/index.html' : urlPath;
     const filePath = path.join(__dirname, '..', 'client', url);
     
     // Security: prevent directory traversal
@@ -126,13 +157,14 @@ wss.on('connection', (ws) => {
         timestamp: formatTimestamp()
     }));
     
-    // Broadcast join notification
-    broadcastToRoom(DEFAULT_ROOM, {
-        type: 'join',
-        from: clientInfo.name,
-        room: DEFAULT_ROOM,
-        timestamp: formatTimestamp()
-    }, ws);
+    // Broadcast join notification only for named users (not guests)
+    // Guest users will broadcast when they set their name
+    // broadcastToRoom(DEFAULT_ROOM, {
+    //     type: 'join',
+    //     from: clientInfo.name,
+    //     room: DEFAULT_ROOM,
+    //     timestamp: formatTimestamp()
+    // }, ws);
     
     // Handle incoming messages
     ws.on('message', (data) => {
@@ -159,13 +191,15 @@ wss.on('connection', (ws) => {
             if (room) {
                 room.delete(ws);
                 
-                // Broadcast leave notification
-                broadcastToRoom(info.room, {
-                    type: 'leave',
-                    from: info.name,
-                    room: info.room,
-                    timestamp: formatTimestamp()
-                });
+                // Broadcast leave notification only for named users
+                if (!info.name.startsWith('guest-')) {
+                    broadcastToRoom(info.room, {
+                        type: 'leave',
+                        from: info.name,
+                        room: info.room,
+                        timestamp: formatTimestamp()
+                    });
+                }
             }
             
             clients.delete(ws);
@@ -221,7 +255,15 @@ function handleMessage(ws, message) {
         
         case 'load_history':
             handleLoadHistory(ws, targetRoom, message.limit || 50);
-            break
+            break;
+        
+        case 'register_agent':
+            handleRegisterAgent(ws, message);
+            break;
+        
+        case 'signed_message':
+            handleSignedMessage(ws, clientInfo, targetRoom, message);
+            break;
         
         default:
             ws.send(JSON.stringify({
@@ -237,9 +279,44 @@ function handleSetName(ws, clientInfo, name) {
     
     const sanitizedName = name.trim().substring(0, 20);
     const oldName = clientInfo.name;
+    
+    // 🔧 Bug Fix: 检查是否已有同名用户，踢掉旧连接
+    let existingWs = null;
+    for (const [wsClient, info] of clients.entries()) {
+        if (info.name === sanitizedName && wsClient !== ws) {
+            existingWs = wsClient;
+            break;
+        }
+    }
+    
+    if (existingWs) {
+        console.log(`[WS] ${sanitizedName} 重新连接，踢掉旧连接`);
+        existingWs.send(JSON.stringify({
+            type: 'kicked',
+            message: '您已在其他地方登录',
+            timestamp: formatTimestamp()
+        }));
+        existingWs.close();
+        
+        // 从房间中移除旧连接
+        const room = rooms.get(clientInfo.room);
+        if (room) {
+            room.delete(existingWs);
+        }
+        clients.delete(existingWs);
+    }
+    
     clientInfo.name = sanitizedName;
     
     console.log(`[WS] ${oldName} is now known as ${sanitizedName}`);
+    
+    // 广播名字变更
+    broadcastToRoom(clientInfo.room, {
+        type: 'name_change',
+        from: oldName,
+        to: sanitizedName,
+        timestamp: formatTimestamp()
+    });
     
     // Send confirmation
     ws.send(JSON.stringify({
@@ -402,6 +479,73 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`║  Storage:   ${STORAGE_DIR}                              `);
     console.log('╚════════════════════════════════════════════════════════╝');
 });
+
+// Handle Agent Registration
+function handleRegisterAgent(ws, message) {
+    const { name, agentId, publicKey } = message;
+    
+    if (!name || !agentId || !publicKey) {
+        ws.send(JSON.stringify({
+            type: 'error',
+            message: 'Missing required fields: name, agentId, publicKey'
+        }));
+        return;
+    }
+    
+    // Register agent
+    agentRegistry.register(name, agentId, publicKey);
+    saveRegistry();
+    
+    ws.send(JSON.stringify({
+        type: 'agent_registered',
+        agentId: agentId,
+        message: `Agent ${name} registered successfully`
+    }));
+    
+    console.log(`[Registry] Agent registered: ${name} (${agentId})`);
+}
+
+// Handle Signed Message
+function handleSignedMessage(ws, clientInfo, room, message) {
+    const { agentId, content, signature } = message;
+    
+    if (!agentId || !content || !signature) {
+        ws.send(JSON.stringify({
+            type: 'error',
+            message: 'Missing required fields: agentId, content, signature'
+        }));
+        return;
+    }
+    
+    // Verify signature
+    if (agentRegistry.verifyMessage(agentId, content, signature)) {
+        // Signature valid, broadcast message
+        const broadcastMsg = {
+            type: 'message',
+            from: clientInfo.name,
+            room: room,
+            content: content,
+            agentId: agentId,
+            verified: true,
+            timestamp: formatTimestamp(),
+            metadata: {
+                agent: 'openclaw',
+                model: 'qwen3.5-plus'
+            }
+        };
+        
+        console.log(`[CHAT] ${clientInfo.name} @ ${room} (verified: ${agentId}): ${content}`);
+        storeMessage(broadcastMsg);
+        broadcastToRoom(room, broadcastMsg);
+    } else {
+        // Signature invalid
+        ws.send(JSON.stringify({
+            type: 'error',
+            message: 'Signature verification failed'
+        }));
+        console.log(`[Registry] Signature verification failed for ${agentId}`);
+    }
+}
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
