@@ -464,10 +464,20 @@
                     joinBtn.textContent = "Join Chat";
                 }
                 
-                // 更新弹窗状态
-                if (modalStatus) {
-                    modalStatus.textContent = "✓ Connected to server";
-                    setTimeout(() => { modalStatus.textContent = ""; }, 1500);
+                // 如果已加入聊天，启用输入框（重连场景）
+                if (myName) {
+                    messageInput.disabled = false;
+                    sendBtn.disabled = false;
+                    if (modalStatus) {
+                        modalStatus.textContent = "✓ 已重连";
+                        setTimeout(() => { modalStatus.textContent = ""; }, 1500);
+                    }
+                } else {
+                    // 更新弹窗状态（首次连接）
+                    if (modalStatus) {
+                        modalStatus.textContent = "✓ Connected to server";
+                        setTimeout(() => { modalStatus.textContent = ""; }, 1500);
+                    }
                 }
                 
                 // 如果有待提交的名字，自动处理
@@ -511,8 +521,16 @@
                 console.log("[WS] Disconnected");
                 statusEl.textContent = "Disconnected";
                 statusEl.className = "status disconnected";
-                messageInput.disabled = true;
-                sendBtn.disabled = true;
+                
+                // 只在已加入聊天后才禁用输入框
+                if (myName) {
+                    messageInput.disabled = true;
+                    sendBtn.disabled = true;
+                    if (modalStatus) {
+                        modalStatus.textContent = "⚠️ 连接断开，重连中...";
+                    }
+                }
+                
                 hideMentionDropdown();
                 setTimeout(connect, 3000);
             };
