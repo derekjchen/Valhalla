@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Co 心跳脚本 - 每小时检查群聊并与 Claw 对齐
+Co 心跳脚本 - 每小时检查群聊并主动参与
 
 功能:
-1. 连接群聊发送心跳消息
-2. 检查 Claw 是否在线
-3. 交换状态信息
-4. 记录心跳日志
+1. 检查 sync-inbox 新消息
+2. 检查 chatroom 活动
+3. 检查服务器状态
+4. 提醒待办事项
+5. 主动参与讨论
 
 Author: Co
 Date: 2026-03-18
@@ -18,18 +19,124 @@ import websockets
 from datetime import datetime
 from pathlib import Path
 import sys
+import os
 
 # 配置
-CHATROOM_URL = "ws://39.96.212.215:18790"
+CHATROOM_URL = "ws://localhost:18790"
 ROOM = "co-claw-derek"
 NAME = "Co"
-HEARTBEAT_LOG = Path("/app/working/logs/heartbeat.log")
-STATUS_FILE = Path("/app/working/logs/last_heartbeat.json")
+WORKSPACE = Path("/home/admin/.openclaw/workspace")
+SYNC_INBOX = WORKSPACE / "SHARED-MEMORY" / "sync-inbox"
+CHATROOM_LOGS = WORKSPACE / "SHARED-MEMORY" / "chatroom"
+HEARTBEAT_LOG = WORKSPACE / "memory" / "co-heartbeat.log"
+STATUS_FILE = WORKSPACE / "memory" / "co-heartbeat-state.json"
+
+
+def check_sync_inbox():
+    """检查 sync-inbox 新消息"""
+    try:
+        if not SYNC_INBOX.exists():
+            return "⚠️ sync-inbox 不存在"
+        
+        files = list(SYNC_INBOX.glob("*.json"))
+        if not files:
+            return "✅ sync-inbox: 无新消息"
+        
+        # 检查是否有未读消息
+        unread = []
+        for f in files:
+            try:
+                data = json.loads(f.read_text())
+                if data.get("to") == "co" and not data.get("read"):
+                    unread.append(f.name)
+            except:
+                pass
+        
+        if unread:
+            return f"📬 sync-inbox: {len(unread)} 条未读消息"
+        return f"✅ sync-inbox: {len(files)} 条消息 (已读)"
+    except Exception as e:
+        return f"❌ sync-inbox 检查失败：{e}"
+
+
+def check_chatroom_activity():
+    """检查 chatroom 活动"""
+    try:
+        if not CHATROOM_LOGS.exists():
+            return "⚠️ chatroom 日志不存在"
+        
+        files = list(CHATROOM_LOGS.glob("*.jsonl"))
+        if not files:
+            return "⚠️ chatroom: 无聊天记录"
+        
+        # 读取最新文件的最后几条
+        latest = max(files, key=lambda f: f.stat().st_mtime)
+        lines = latest.read_text().strip().split('\n')[-5:]
+        
+        # 统计活动
+        derek_msgs = sum(1 for l in lines if '"from":"Derek"' in l)
+        claw_msgs = sum(1 for l in lines if '"from":"claw"' in l)
+        
+        if derek_msgs or claw_msgs:
+            return f"💬 chatroom: Derek({derek_msgs}) Claw({claw_msgs}) 活跃"
+        return "⚠️ chatroom: 暂无新消息"
+    except Exception as e:
+        return f"❌ chatroom 检查失败：{e}"
+
+
+def check_server_status():
+    """检查服务器状态"""
+    try:
+        import subprocess
+        result = subprocess.run(
+            "pgrep -f 'node server/index.js' > /dev/null 2>&1 && echo 'running' || echo 'stopped'",
+            shell=True,
+            capture_output=True,
+            text=True
+        )
+        if 'running' in result.stdout:
+            return "✅ 服务器：正常运行"
+        return "⚠️ 服务器：未运行"
+    except:
+        return "❌ 服务器：检查失败"
+
+
+def get_pending_tasks():
+    """获取待办事项"""
+    tasks = []
+    
+    # 检查 HEARTBEAT.md
+    heartbeat_file = WORKSPACE / "HEARTBEAT.md"
+    if heartbeat_file.exists():
+        content = heartbeat_file.read_text()
+        if "创建远程仓库" in content:
+            tasks.append("⚠️ Derek 今晚创建远程仓库")
+    
+    return tasks
 
 
 async def send_heartbeat():
-    """发送心跳消息"""
-    timestamp = datetime.utcnow().isoformat()
+    """发送有意义的心跳消息"""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    
+    # 收集状态信息
+    sync_status = check_sync_inbox()
+    chatroom_status = check_chatroom_activity()
+    server_status = check_server_status()
+    pending_tasks = get_pending_tasks()
+    
+    # 构建心跳消息
+    heartbeat_msg = f"""💓 心跳检查 ({timestamp})
+
+**检查项目:**
+- {sync_status}
+- {chatroom_status}
+- {server_status}"""
+    
+    if pending_tasks:
+        heartbeat_msg += "\n\n**待办提醒:**\n" + "\n".join(pending_tasks)
+    
+    heartbeat_msg += "\n\n**下一步:** 等 Derek 指示"
     
     try:
         async with websockets.connect(CHATROOM_URL, close_timeout=5) as ws:
@@ -40,109 +147,35 @@ async def send_heartbeat():
             await asyncio.wait_for(ws.recv(), timeout=3)
             
             # 发送心跳消息
-            heartbeat_msg = f"💓 心跳检查 {timestamp[:16]} - Co 运行正常"
             await ws.send(json.dumps({
                 "type": "chat",
                 "content": heartbeat_msg,
                 "room": ROOM
             }))
             
-            # 检查 Claw 是否在线
-            await ws.send(json.dumps({
-                "type": "list_users",
-                "room": ROOM
-            }))
-            
-            # 接收用户列表
-            log_message = "未知状态"
-            try:
-                response = await asyncio.wait_for(ws.recv(), timeout=3)
-                data = json.loads(response)
-                if data.get("type") == "user_list":
-                    users = data.get("users", [])
-                    claw_online = any("claw" in u.lower() for u in users)
-                    
-                    if claw_online:
-                        # Claw 在线，发送对齐请求
-                        await ws.send(json.dumps({
-                            "type": "chat",
-                            "content": "@claw 🦞 心跳对齐：Co 状态正常，请确认你的状态",
-                            "room": ROOM
-                        }))
-                        log_message = f"✅ Claw 在线，已发送对齐请求"
-                    else:
-                        log_message = f"⏳ Claw 离线，等待下次检查"
-                    
-                    print(f"在线用户: {users}")
-                    print(log_message)
-            except asyncio.TimeoutError:
-                log_message = "⚠️ 获取用户列表超时"
-                print(log_message)
-            
             # 记录日志
-            log_heartbeat(timestamp, True, log_message)
+            HEARTBEAT_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with open(HEARTBEAT_LOG, "a") as f:
+                f.write(f"[{timestamp}] {heartbeat_msg}\n")
             
-            print(f"✅ 心跳发送成功: {timestamp}")
-            return True
+            # 保存状态
+            status = {
+                "timestamp": timestamp,
+                "sync": sync_status,
+                "chatroom": chatroom_status,
+                "server": server_status,
+                "tasks": pending_tasks
+            }
+            with open(STATUS_FILE, "w") as f:
+                json.dump(status, f, indent=2, ensure_ascii=False)
+            
+            print(f"✅ 心跳发送成功：{timestamp}")
             
     except Exception as e:
-        error_msg = f"❌ 心跳失败: {e}"
-        print(error_msg)
-        log_heartbeat(timestamp, False, error_msg)
-        return False
-
-
-def log_heartbeat(timestamp: str, success: bool, message: str):
-    """记录心跳日志"""
-    HEARTBEAT_LOG.parent.mkdir(parents=True, exist_ok=True)
-    
-    # 写入日志文件
-    log_line = f"{timestamp} | {'SUCCESS' if success else 'FAILED'} | {message}\n"
-    with open(HEARTBEAT_LOG, "a") as f:
-        f.write(log_line)
-    
-    # 写入状态文件
-    status = {
-        "last_heartbeat": timestamp,
-        "success": success,
-        "message": message,
-        "agent_id": "agent_93502504a73f6905"
-    }
-    with open(STATUS_FILE, "w") as f:
-        json.dump(status, f, indent=2)
-
-
-def show_recent_logs(n: int = 5):
-    """显示最近的日志"""
-    if HEARTBEAT_LOG.exists():
-        print(f"\n📜 最近 {n} 条心跳日志:")
-        with open(HEARTBEAT_LOG, "r") as f:
-            lines = f.readlines()[-n:]
-            for line in lines:
-                print(f"  {line.strip()}")
-    else:
-        print("\n📜 暂无心跳日志")
+        print(f"❌ 心跳发送失败：{e}")
 
 
 if __name__ == "__main__":
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Co 心跳脚本")
-    parser.add_argument("--logs", action="store_true", help="显示最近日志")
-    parser.add_argument("--status", action="store_true", help="显示当前状态")
-    args = parser.parse_args()
-    
-    if args.logs:
-        show_recent_logs()
-    elif args.status:
-        if STATUS_FILE.exists():
-            print("\n📊 当前状态:")
-            status = json.loads(STATUS_FILE.read_text())
-            for key, value in status.items():
-                print(f"  {key}: {value}")
-        else:
-            print("\n📊 暂无状态信息")
-    else:
-        print(f"🕐 Co 心跳检查 - {datetime.utcnow().isoformat()}")
-        print("=" * 50)
-        asyncio.run(send_heartbeat())
+    # 兼容旧版本 Python
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(send_heartbeat())
